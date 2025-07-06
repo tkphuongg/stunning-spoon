@@ -88,22 +88,32 @@ int traverse_path_parent(file_system *fs, const char *path)
 	return inode_num;
 }
 
-char* get_name(char* path)
+char* get_name(const char* path)
 {
-	char* token, name;
-	strcpy(token, path);
-	token = strtok(token, "/");
+	char path_copy[256];
+    strncpy(path_copy, path, sizeof(path_copy));
+    path_copy[sizeof(path_copy) - 1] = '\0';
+
+	char* token = strtok(path_copy, "/");
+    char* last = token;
+
 	while (token != NULL)
 	{
-		strcpy(name, token);
+		last = token;
 		token = strtok(NULL, "/");
 	}
-	return name;
+
+	char* result = malloc(strlen(last) + 1);
+    strcpy(result, last);
+    return result;
 }
 
 int
 fs_mkdir(file_system *fs, char *path)
 {
+	char name = get_name(path);
+
+	free(name);
 	return -1;
 }
 
