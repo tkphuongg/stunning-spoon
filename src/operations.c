@@ -22,6 +22,7 @@ int find_child_with_name(file_system* fs, inode* parent, const char* name)
 		if(child_inode_num == -1) continue;
 
 		inode* child = inode_ptr_at_num(fs, child_inode_num);
+		if(child == NULL) continue;
 
 		// Return child number if name matches
 		if(strcmp(child->name, name) == 0)
@@ -33,7 +34,7 @@ int find_child_with_name(file_system* fs, inode* parent, const char* name)
 	return -1;
 }
 
-int traverse_path(file_system *fs, const char *path)
+int traverse_path(file_system *fs, const char *path, size_t size_of_path)
 {
 	// Check if path exists or in correct format
 	if(path == NULL || path[0] != '/') return -1;
@@ -41,46 +42,51 @@ int traverse_path(file_system *fs, const char *path)
 	int inode_num = fs->root_node;
 	inode* inode_ptr = inode_ptr_at_num(fs, inode_num);
 
-	char* token;
-	strcpy(token, path);
-	token = strtok(token, "/");
+	char path_copy[size_of_path + 1];
+	strcpy(path_copy, path);
+
+	char* token = strtok(path_copy, "/");
 
 	while (token != NULL)
 	{
 		inode_num = find_child_with_name(fs, inode_ptr, token);
 		if(inode_num == -1) return -1;
 		inode_ptr = inode_ptr_at_num(fs, inode_num);
+		token = strtok(NULL, "/");
 	}
 	
 	return inode_num;
 }
 
-int traverse_path_parent(file_system *fs, const char *path)
+int traverse_path_parent(file_system *fs, const char *path, size_t size_of_path)
 {
 	// Check if path exists or in correct format
 	if(path == NULL || path[0] != '/') return -1;
 
-	// Parent and child token
-	char* p_tok, c_tok, parent; 
-	strcpy(p_tok, path);
-	strcpy(c_tok, path);
+	// Copy path
+	char path_copy[size_of_path + 1];
+    strcpy(path_copy, path);
 
 	// Inode used to traverse
+	char *token = strtok(path_copy, "/");
 	int inode_num = fs->root_node;
 	inode* inode_ptr = inode_ptr_at_num(fs, inode_num);
 
-	p_tok = strtok(p_tok, "/");
-	if(p_tok == NULL) return -1;
-	c_tok = strtok(c_tok, "/");
-	if(c_tok == NULL) return inode_num;
+	// If path like "/" return -1 bc no parent
+	if(token == NULL) return -1;
 
-	while (c_tok != NULL)
+	char last_token[NAME_MAX_LENGTH];
+	last_token[0] = '\0';
+
+	while (token != NULL)
 	{
-		strcpy(parent, p_tok);
-		p_tok = strtok(NULL, "/");
-		c_tok = strtok(NULL, "/");
+		strncpy(last_token, token, sizeof(last_token));
+		last_token[NAME_MAX_LENGTH - 1] = '\0';
 
-		inode_num = find_child_with_name(fs, inode_ptr, p_tok);
+		// theres no next token, return inode_num(parent)
+		if(token == NULL) return inode_num;
+
+		inode_num = find_child_with_name(fs, inode_ptr, last_token);
 		if(inode_num == -1) return -1;
 		inode_ptr = inode_ptr_at_num(fs, inode_num);
 	}
@@ -88,11 +94,10 @@ int traverse_path_parent(file_system *fs, const char *path)
 	return inode_num;
 }
 
-char* get_name(const char* path)
+char* get_name(const char* path, size_t size_of_path)
 {
-	char path_copy[256];
-    strncpy(path_copy, path, sizeof(path_copy));
-    path_copy[sizeof(path_copy) - 1] = '\0';
+	char path_copy[size_of_path + 1];
+    strcpy(path_copy, path);
 
 	char* token = strtok(path_copy, "/");
     char* last = token;
@@ -111,7 +116,7 @@ char* get_name(const char* path)
 int
 fs_mkdir(file_system *fs, char *path)
 {
-	char name = get_name(path);
+	char name = get_name(path, strlen(path));
 
 	free(name);
 	return -1;
