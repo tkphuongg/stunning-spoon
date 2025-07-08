@@ -66,9 +66,13 @@ int traverse_path_parent(file_system *fs, const char *path, size_t size_of_path)
 	// Copy path
 	char path_copy[size_of_path + 1];
     strcpy(path_copy, path);
+	
+	char *token = strtok(path_copy, "/");
+	token = strtok(NULL, "/");
+	if(token == NULL) return 0;
 
 	// Inode used to traverse
-	char *token = strtok(path_copy, "/");
+	token = strtok(path_copy, "/");
 	int inode_num = fs->root_node;
 	inode* inode_ptr = inode_ptr_at_num(fs, inode_num);
 
@@ -83,8 +87,7 @@ int traverse_path_parent(file_system *fs, const char *path, size_t size_of_path)
 		strncpy(last_token, token, sizeof(last_token));
 		last_token[NAME_MAX_LENGTH - 1] = '\0';
 
-		// theres no next token, return inode_num(parent)
-		if(token == NULL) return inode_num;
+		token = strtok(NULL, "/");
 
 		inode_num = find_child_with_name(fs, inode_ptr, last_token);
 		if(inode_num == -1) return -1;
@@ -109,17 +112,53 @@ char* get_name(const char* path, size_t size_of_path)
 	}
 
 	char* result = malloc(strlen(last) + 1);
+	if(result == NULL) return NULL;
     strcpy(result, last);
     return result;
+}
+
+int find_free_direct_block(file_system* fs, inode* inode){
+	for (int i=0; i<DIRECT_BLOCKS_COUNT; i++) {
+		if(inode->direct_blocks[i] == -1){
+			return i;
+		}
+	}
+	return -1;
 }
 
 int
 fs_mkdir(file_system *fs, char *path)
 {
-	char name = get_name(path, strlen(path));
+	size_t size_of_path = strlen(path);
+	
+	// Get parent inode
+	int parent_inode_num = traverse_path_parent(fs, path, size_of_path);
+
+	if(parent_inode_num == -1) return -1;
+
+	inode* parent_inode_ptr = inode_ptr_at_num(fs, parent_inode_num);
+	
+	// Create child inode
+	char* name = get_name(path, size_of_path);
+
+	if(name == NULL || name[0] == '\0') return -1;
+
+
+	int child_inode_num = find_free_inode(fs);
+	inode* child_inode_ptr = inode_ptr_at_num(fs, child_inode_num);
+
+	// Write info to child inode
+	inode_init(child_inode_ptr);
+	child_inode_ptr->n_type = directory;
+	strcpy(child_inode_ptr->name, name);
+	child_inode_ptr->parent = parent_inode_num;
+
+	int free_direct_block = find_free_direct_block(fs, parent_inode_ptr);
+	// if(free_direct_block == -1) return -1;
+	parent_inode_ptr->direct_blocks[free_direct_block] = child_inode_num;
 
 	free(name);
-	return -1;
+	return 0;
 }
 
 int
