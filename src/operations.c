@@ -164,7 +164,36 @@ fs_mkdir(file_system *fs, char *path)
 int
 fs_mkfile(file_system *fs, char *path_and_name)
 {
-	return -1;
+	size_t size_of_path = strlen(path_and_name);
+	
+	// Get parent inode
+	int parent_inode_num = traverse_path_parent(fs, path_and_name, size_of_path);
+
+	if(parent_inode_num == -1) return -1;
+
+	inode* parent_inode_ptr = inode_ptr_at_num(fs, parent_inode_num);
+	
+	// Create child inode
+	char* name = get_name(path_and_name, size_of_path);
+
+	if(name == NULL || name[0] == '\0') return -1;
+
+
+	int child_inode_num = find_free_inode(fs);
+	inode* child_inode_ptr = inode_ptr_at_num(fs, child_inode_num);
+
+	// Write info to child inode
+	inode_init(child_inode_ptr);
+	child_inode_ptr->n_type = reg_file;
+	strcpy(child_inode_ptr->name, name);
+	child_inode_ptr->parent = parent_inode_num;
+
+	int free_direct_block = find_free_direct_block(fs, parent_inode_ptr);
+	// if(free_direct_block == -1) return -1;
+	parent_inode_ptr->direct_blocks[free_direct_block] = child_inode_num;
+
+	free(name);
+	return 0;
 }
 
 int
