@@ -71,10 +71,8 @@ int traverse_path_parent(file_system *fs, const char *path, size_t size_of_path)
 	token = strtok(NULL, "/");
 	if(token == NULL) return 0;
 
-
 	// Inode used to traverse
 	token = strtok(path_copy, "/");
-	// printf("%s\n", token);
 	int inode_num = fs->root_node;
 	inode* inode_ptr = inode_ptr_at_num(fs, inode_num);
 
@@ -87,14 +85,7 @@ int traverse_path_parent(file_system *fs, const char *path, size_t size_of_path)
 	while (token != NULL)
 	{
 		strcpy(last_token, token);
-		// last_token[NAME_MAX_LENGTH - 1] = '\0';
-
 		token = strtok(NULL, "/");
-		// printf("dir name to search 4 child: %s\n", inode_ptr->name);
-		for(int i = 0; i < DIRECT_BLOCKS_COUNT; i++){
-			if(inode_ptr->direct_blocks[i] == -1) continue;
-			inode* ptr = inode_ptr_at_num(fs, inode_ptr->direct_blocks[i]);
-		}
 		inode_num = find_child_with_name(fs, inode_ptr, last_token);
 		if(inode_num == -1) return -1;
 		inode_ptr = inode_ptr_at_num(fs, inode_num);
@@ -337,10 +328,133 @@ fs_cp(file_system *fs, char *src_path, char *dst_path_and_name)
 	return 0;
 }
 
+typedef struct _queue_object {
+	int num;
+	struct _queue_object *next;
+} queue_object;
+
+int queue_add(int num, queue_object *queue)
+{
+	if(queue == NULL) return -1;
+	
+	queue_object* new = malloc(sizeof(queue_object));
+	if(new == NULL) return -1;
+
+	new->num = num;
+	new->next = queue->next;
+	queue->next = new;
+	return 0;
+}
+
+int sort_add(int n, queue_object* queue)
+{
+	queue_object* num_to_check = queue;
+    while(num_to_check->next != NULL &&
+          (num_to_check->next->num < n))
+    {
+        num_to_check = num_to_check->next;
+    }
+    return queue_add(n, num_to_check);
+}
+
+queue_object* queue_poll(queue_object *queue)
+{
+	// TODO
+	if(queue->next == NULL || queue == NULL) return NULL;
+
+	queue_object* first = queue->next;
+	if(first->next == NULL) queue->next = NULL;
+	else queue->next = first->next;
+	return first;
+}
+
+queue_object *new_queue()
+{
+	queue_object* queue = malloc(sizeof(queue_object));
+	if(queue == NULL) return NULL;
+	queue->num = -1;
+	queue->next = NULL;
+	return queue;
+}
+
+void free_queue(queue_object *queue)
+{
+	if(queue == NULL) return;
+	queue_object* item_to_free = queue;
+	while (item_to_free->next != NULL)
+	{
+		queue = queue->next;
+		free(item_to_free);
+		item_to_free = queue;
+	}
+	free(item_to_free);
+}
+
+void string_from_item(queue_object* queue_item, file_system* fs, char* buffer, size_t buffer_size)
+{
+	if (queue_item == NULL) return;
+
+	int inode_num = queue_item->num;
+	inode* inode_ptr = inode_ptr_at_num(fs, inode_num);
+
+	char line[NAME_MAX_LENGTH + 6];
+
+	if(inode_ptr->n_type == directory)
+	{
+		snprintf(line, sizeof(line), "DIR %s\n", inode_ptr->name);
+	}
+	else if(inode_ptr->n_type == reg_file)
+	{
+		snprintf(line, sizeof(line), "FIL %s\n", inode_ptr->name);
+	}
+
+	strncat(buffer, line, buffer_size - strlen(buffer) - 1);
+}
+
+void string_from_queue(queue_object* queue, file_system* fs, char* buffer, size_t buffer_size)
+{
+	if(queue == NULL || queue->next == NULL) return;
+	queue_object* item = queue_poll(queue);
+
+	while (item != NULL)
+	{
+		string_from_item(item, fs, buffer, buffer_size);
+		free(item);
+		item = queue_poll(queue);
+	}
+}
+
 char *
 fs_list(file_system *fs, char *path)
 {
-	return NULL;
+	static char result[4096];
+	result[0] = '\0';
+
+	queue_object* queue = new_queue();
+	if (queue == NULL) return NULL;
+	
+	int inode_num = traverse_path(fs, path, strlen(path));
+	if(inode_num == -1) 
+	{
+		free_queue(queue);
+		return NULL;
+	}
+
+	inode* inode_ptr = inode_ptr_at_num(fs, inode_num);
+
+	for(int i = 0; i < DIRECT_BLOCKS_COUNT; i++)
+	{
+		if(inode_ptr->direct_blocks[i] == -1) continue;
+		if(sort_add(inode_ptr->direct_blocks[i], queue) == -1)
+		{
+			free_queue(queue);
+			return NULL;
+		}
+	}
+
+	string_from_queue(queue, fs, result, sizeof(result));
+	free_queue(queue);
+	return result;
 }
 
 int
