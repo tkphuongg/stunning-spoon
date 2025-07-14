@@ -305,7 +305,6 @@ fs_cp(file_system *fs, char *src_path, char *dst_path_and_name)
 			if(src_inode->direct_blocks[i] == -1) continue;
 			inode* child = inode_ptr_at_num(fs, src_inode->direct_blocks[i]);
 
-			// printf("%s\n", child->name);
 			char child_src_path[256];
 			snprintf(child_src_path, sizeof(child_src_path), "%s/%s", src_path, child->name);
 
@@ -313,8 +312,8 @@ fs_cp(file_system *fs, char *src_path, char *dst_path_and_name)
 			char child_dst_path[256];
 			snprintf(child_dst_path, sizeof(child_dst_path), "%s/%s", dst_path_and_name, child->name);
 
-
-			if (fs_cp(fs, child_src_path, child_dst_path) == -1) {
+			if (fs_cp(fs, child_src_path, child_dst_path) == -1) 
+			{
     			free(new_name);
     			return -1;
 			}
@@ -572,7 +571,62 @@ fs_readf(file_system *fs, char *filename, int *file_size)
 int
 fs_rm(file_system *fs, char *path)
 {
-	return -1;
+	int parent_inode_num = traverse_path_parent(fs, path, strlen(path));
+	if(parent_inode_num == -1) return -1;
+	inode* parent_inode_ptr = inode_ptr_at_num(fs, parent_inode_num);
+
+	int inode_num = traverse_path(fs, path, strlen(path));
+	if(inode_num == -1) return -1;
+	inode* inode_ptr = inode_ptr_at_num(fs, inode_num);
+
+	if(inode_ptr->n_type == reg_file)
+	{
+		// Free direct blocks
+		for(int i = 0; i < DIRECT_BLOCKS_COUNT; i++)
+		{
+			// Get block index
+			int block_index = inode_ptr->direct_blocks[i];
+			if(block_index == -1) continue;
+
+			// Get block and reset block's data
+			data_block* block = data_block_at_num(fs, block_index);
+			block->size = 0;
+			memset(block->block, 0, BLOCK_SIZE);
+			
+			// Mark block as free in free_list and remove reference from inode
+			fs->free_list[block_index] = 1;
+			inode_ptr->direct_blocks[i] = -1;
+		}
+	}
+	else if (inode_ptr->n_type == directory)
+	{
+		for(int i = 0; i < DIRECT_BLOCKS_COUNT; i++)
+		{
+			// Get child inode
+			if(inode_ptr->direct_blocks[i] == -1) continue;
+			inode* child = inode_ptr_at_num(fs, inode_ptr->direct_blocks[i]);
+
+			// Build path for rm -r
+			char child_path[256];
+			snprintf(child_path, sizeof(child_path), "%s/%s", path, child->name);
+
+			// Remove children recursively
+			if (fs_rm(fs, child_path) == -1) return -1;
+		}
+	}
+	
+	// Reset inode's info
+	inode_ptr->n_type = free_block;
+	inode_ptr->size = 0;
+	memset(inode_ptr->name, 0, NAME_MAX_LENGTH);
+	inode_ptr->parent = -1;
+
+	// Remove reference from parent
+	int parent_direct_block_index = find_direct_block_with_val(fs, parent_inode_ptr, inode_num);
+	if(parent_direct_block_index == -1) return -1;
+	parent_inode_ptr->direct_blocks[parent_direct_block_index] = -1;
+
+	return 0;
 }
 
 int
