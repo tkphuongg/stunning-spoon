@@ -541,7 +541,31 @@ fs_writef(file_system *fs, char *filename, char *text)
 uint8_t *
 fs_readf(file_system *fs, char *filename, int *file_size)
 {
-	return NULL;
+	int inode_num = traverse_path(fs, filename, strlen(filename));
+	if(inode_num == -1) return NULL;
+	inode* inode_ptr = inode_ptr_at_num(fs, inode_num);
+	if(inode_ptr->n_type != reg_file) return NULL;
+	
+	*file_size = 0;
+	int size = inode_ptr->size;
+	if(size > BLOCK_SIZE * DIRECT_BLOCKS_COUNT || size == 0) return NULL;
+	*file_size = size;
+
+	static uint8_t result[BLOCK_SIZE * DIRECT_BLOCKS_COUNT];
+
+	int copied = 0;
+	for(int i = 0; i < DIRECT_BLOCKS_COUNT; i++)
+	{
+		int data_block_index = inode_ptr->direct_blocks[i];
+		if(data_block_index == -1) break;
+
+		data_block* data_block = data_block_at_num(fs, data_block_index);
+		int to_copy = (size - copied < BLOCK_SIZE) ? size - copied : BLOCK_SIZE;
+		memcpy(result + copied, data_block->block, to_copy);
+		copied += to_copy;
+	}
+
+	return result;
 }
 
 
