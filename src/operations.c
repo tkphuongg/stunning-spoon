@@ -243,8 +243,6 @@ fs_cp(file_system *fs, char *src_path, char *dst_path_and_name)
 	// printf("dest: %s\n", new_name);
 	if(find_child_with_name(fs, dst_parent_inode, new_name) != -1)
 	{
-			printf("chilasadasdad: 248\n");
-
 		free(new_name);
 		return -1;
 	} 
@@ -253,8 +251,6 @@ fs_cp(file_system *fs, char *src_path, char *dst_path_and_name)
 	int new_inode_num = find_free_inode(fs);
 	if(new_inode_num == -1)
 	{
-			printf("chilasadasdad: 258\n");
-
 		free(new_name);
 		return -1;
 	} 
@@ -297,6 +293,7 @@ fs_cp(file_system *fs, char *src_path, char *dst_path_and_name)
 
 			new_data_block->size = src_data_block->size;
 			memcpy(new_data_block->block, src_data_block->block, BLOCK_SIZE);
+			fs->free_list[free_block_num] = 0;
 		}
 
 		fs->s_block->free_blocks -= used_blocks;
@@ -460,7 +457,85 @@ fs_list(file_system *fs, char *path)
 int
 fs_writef(file_system *fs, char *filename, char *text)
 {
-	return -1;
+	// Get inode number
+	int inode_num = traverse_path(fs, filename, strlen(filename));
+	if(inode_num == -1) return -1;
+
+	// Get inode pointer and check if inode is a file
+	inode* inode_ptr = inode_ptr_at_num(fs, inode_num);
+	if(inode_ptr->n_type != reg_file) return -1;
+
+	// Variables for writing
+	int text_length = strlen(text);
+	int current_size = inode_ptr->size;						// How big the file currently is
+	int last_block_index = current_size / BLOCK_SIZE;		// Index of the last written in data_block
+	int offset_in_last_block = current_size % BLOCK_SIZE;	// Offset in last written in block
+
+	int written = 0; // How much data has been written
+
+	// If there has already been data in inode
+	if(current_size > 0 && offset_in_last_block != 0)
+	{
+		// Get last written data block and its index in fs
+		int block_num = last_block_index;
+		data_block* block = data_block_at_num(fs, block_num);
+
+		// Check for space left in data block and how much data fits there
+		int space_left = BLOCK_SIZE - offset_in_last_block;
+		int copy_size = (text_length < space_left) ? text_length : space_left;
+		
+		// Copy data to data block
+		memcpy(block->block + offset_in_last_block, text, copy_size);
+		
+		// Mark data block as used in fs
+		fs->free_list[last_block_index] = 0;
+
+		// Get data block index in inode's direct block
+		int direct_block_num = find_direct_block_with_val(fs, inode_ptr, last_block_index);
+		if(direct_block_num == -1)
+		{
+			direct_block_num = find_direct_block_with_val(fs, inode_ptr, -1);
+		} 
+
+		// Assign data block to inode
+		inode_ptr->direct_blocks[direct_block_num] = last_block_index;
+
+		// Save how much data has been written
+		block->size += copy_size;
+		written += copy_size;
+	}
+
+	// Write the rest data in new data block if theres any
+	while (written < text_length)
+	{
+		// Get free data block with smallest index
+		int free_block_num = find_free_block(fs);
+		if(free_block_num == -1) return -1;
+		data_block* new_block = data_block_at_num(fs, free_block_num);
+
+		// Mark data block as used in fs
+		fs->free_list[free_block_num] = 0;
+
+		// Get data block index in inode's direct block
+		int new_block_num = inode_ptr->size / BLOCK_SIZE;
+		// If data too big return -1
+		if(new_block_num > DIRECT_BLOCKS_COUNT) return -1;
+		// Assign data block to inode
+		inode_ptr->direct_blocks[new_block_num] = free_block_num;
+
+		// Copy data to data block
+		int copy_size = (text_length - written < BLOCK_SIZE) ? text_length - written : BLOCK_SIZE;
+		memcpy(new_block->block, text + written, copy_size);
+
+		// Save how much data has been written
+		new_block->size = copy_size;
+		written += copy_size;
+
+		// Change inode size
+		inode_ptr->size += copy_size;
+	}
+
+	return written;
 }
 
 uint8_t *
