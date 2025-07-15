@@ -573,10 +573,12 @@ fs_rm(file_system *fs, char *path)
 {
 	int parent_inode_num = traverse_path_parent(fs, path, strlen(path));
 	if(parent_inode_num == -1) return -1;
+	
 	inode* parent_inode_ptr = inode_ptr_at_num(fs, parent_inode_num);
-
+	
 	int inode_num = traverse_path(fs, path, strlen(path));
 	if(inode_num == -1) return -1;
+
 	inode* inode_ptr = inode_ptr_at_num(fs, inode_num);
 
 	if(inode_ptr->n_type == reg_file)
@@ -605,13 +607,14 @@ fs_rm(file_system *fs, char *path)
 			// Get child inode
 			if(inode_ptr->direct_blocks[i] == -1) continue;
 			inode* child = inode_ptr_at_num(fs, inode_ptr->direct_blocks[i]);
-
+			
 			// Build path for rm -r
 			char child_path[256];
 			snprintf(child_path, sizeof(child_path), "%s/%s", path, child->name);
 
 			// Remove children recursively
 			if (fs_rm(fs, child_path) == -1) return -1;
+			inode_ptr->direct_blocks[i] = -1;
 		}
 	}
 	
@@ -623,7 +626,6 @@ fs_rm(file_system *fs, char *path)
 
 	// Remove reference from parent
 	int parent_direct_block_index = find_direct_block_with_val(fs, parent_inode_ptr, inode_num);
-	if(parent_direct_block_index == -1) return -1;
 	parent_inode_ptr->direct_blocks[parent_direct_block_index] = -1;
 
 	return 0;
