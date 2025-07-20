@@ -281,7 +281,7 @@ fs_cp(file_system *fs, char *src_path, char *dst_path_and_name)
 	// Get new name and check for dupe in new parent
 	char* new_name = get_name(dst_path_and_name, size_of_dst_path);
 	if (new_name == NULL) return -1;
-	// printf("dest: %s\n", new_name);
+
 	if(find_child_with_name(fs, dst_parent_inode, new_name) != -1)
 	{
 		free(new_name);
@@ -311,7 +311,11 @@ fs_cp(file_system *fs, char *src_path, char *dst_path_and_name)
 	if(new_inode->n_type == reg_file)
 	{
 		int used_blocks = count_direct_block(src_inode);
-		if(used_blocks > fs->s_block->free_blocks) return -1;
+		if(used_blocks > fs->s_block->free_blocks) {
+
+			free(new_name);
+			return -1;
+		}
 
 		for(int i = 0; i < DIRECT_BLOCKS_COUNT; i++)
 		{
@@ -352,7 +356,6 @@ fs_cp(file_system *fs, char *src_path, char *dst_path_and_name)
 
 			char child_src_path[256];
 			snprintf(child_src_path, sizeof(child_src_path), "%s/%s", src_path, child->name);
-
 
 			char child_dst_path[256];
 			snprintf(child_dst_path, sizeof(child_dst_path), "%s/%s", dst_path_and_name, child->name);
@@ -503,9 +506,11 @@ fs_list(file_system *fs, char *path)
 	}
 	if(queue->next == NULL)
 	{
+		free(result);
 		free_queue(queue);
 		return NULL;
 	}
+
 	string_from_queue(queue, fs, result, 4096);
 	free_queue(queue);
 	return result;
