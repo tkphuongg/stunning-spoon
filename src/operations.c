@@ -74,25 +74,30 @@ int traverse_path_parent(file_system *fs, const char *path, size_t size_of_path)
     strcpy(path_copy, path);
 	
 	char *token = strtok(path_copy, "/");
+	// If path like "/" return -1 bc no parent
+	if(token == NULL) return -1;
 	token = strtok(NULL, "/");
 	if(token == NULL) return 0;
 
 	// Inode used to traverse
+	strcpy(path_copy, path);
 	token = strtok(path_copy, "/");
 	int inode_num = fs->root_node;
 	inode* inode_ptr = inode_ptr_at_num(fs, inode_num);
 
-	// If path like "/" return -1 bc no parent
-	if(token == NULL) return -1;
-
 	char last_token[NAME_MAX_LENGTH];
 	last_token[0] = '\0';
 
+	char before_last_token[NAME_MAX_LENGTH];
+	before_last_token[0] = '\0';
+
 	while (token != NULL)
 	{
+		strcpy(before_last_token, last_token);
 		strcpy(last_token, token);
 		token = strtok(NULL, "/");
-		inode_num = find_child_with_name(fs, inode_ptr, last_token);
+		inode_num = (before_last_token[0] != '\0') ? find_child_with_name(fs, inode_ptr, before_last_token) : 0;
+		// inode_num = find_child_with_name(fs, inode_ptr, last_token);
 		if(inode_num == -1) return -1;
 		inode_ptr = inode_ptr_at_num(fs, inode_num);
 	}
@@ -145,9 +150,20 @@ fs_mkdir(file_system *fs, char *path)
 	char* name = get_name(path, size_of_path);
 	if(name == NULL || name[0] == '\0') return -1;
 
+	int check_child = find_child_with_name(fs, parent_inode_ptr, name);
+	if(check_child != -1)
+	{
+		free(name);
+		return -1;
+	}
+
 
 	int child_inode_num = find_free_inode(fs);
-	if(child_inode_num == -1) return -1;
+	if(child_inode_num == -1)
+	{
+		free(name);
+		return -1;
+	} 
 	inode* child_inode_ptr = inode_ptr_at_num(fs, child_inode_num);
 
 	// Write info to child inode
@@ -157,7 +173,12 @@ fs_mkdir(file_system *fs, char *path)
 	child_inode_ptr->parent = parent_inode_num;
 
 	int free_direct_block = find_direct_block_with_val(fs, parent_inode_ptr, -1);
-	if(free_direct_block == -1) return -1;
+	if(free_direct_block == -1)
+	{
+		free(name);
+		return -1;
+	} 
+
 	parent_inode_ptr->direct_blocks[free_direct_block] = child_inode_num;
 
 	free(name);
@@ -179,10 +200,18 @@ fs_mkfile(file_system *fs, char *path_and_name)
 	char* name = get_name(path_and_name, size_of_path);
 	if(name == NULL || name[0] == '\0') return -1;
 	int check_child = find_child_with_name(fs, parent_inode_ptr, name);
-	if(check_child != -1) return -2;
+	if(check_child != -1)
+	{
+		free(name);
+		return -2;
+	} 
 
 	int child_inode_num = find_free_inode(fs);
-	if(child_inode_num == -1) return -1;
+	if(child_inode_num == -1)
+	{
+		free(name);
+		return -1;
+	} 
 	inode* child_inode_ptr = inode_ptr_at_num(fs, child_inode_num);
 
 	// Write info to child inode
@@ -192,7 +221,11 @@ fs_mkfile(file_system *fs, char *path_and_name)
 	child_inode_ptr->parent = parent_inode_num;
 
 	int free_direct_block = find_direct_block_with_val(fs, parent_inode_ptr, -1);
-	if(free_direct_block == -1) return -1;
+	if(free_direct_block == -1)
+	{
+		free(name);
+		return -1;
+	} 
 	parent_inode_ptr->direct_blocks[free_direct_block] = child_inode_num;
 
 	free(name);
@@ -287,6 +320,8 @@ fs_cp(file_system *fs, char *src_path, char *dst_path_and_name)
 			int free_block_num = find_free_block(fs);
 			if(free_block_num == -1) 
 			{
+				memset(new_inode->name, 0, NAME_MAX_LENGTH);
+				new_inode->n_type = free_block;
 				free(new_name);
 				return -1;
 			}
@@ -297,6 +332,8 @@ fs_cp(file_system *fs, char *src_path, char *dst_path_and_name)
 
 			if(src_data_block->size > BLOCK_SIZE)
 			{
+				memset(new_inode->name, 0, NAME_MAX_LENGTH);
+				new_inode->n_type = free_block;
 				free(new_name);
 				return -1;
 			} 
@@ -322,6 +359,8 @@ fs_cp(file_system *fs, char *src_path, char *dst_path_and_name)
 
 			if (fs_cp(fs, child_src_path, child_dst_path) == -1) 
 			{
+				memset(new_inode->name, 0, NAME_MAX_LENGTH);
+				new_inode->n_type = free_block;
     			free(new_name);
     			return -1;
 			}
@@ -462,7 +501,11 @@ fs_list(file_system *fs, char *path)
 			return NULL;
 		}
 	}
-
+	if(queue->next == NULL)
+	{
+		free_queue(queue);
+		return NULL;
+	}
 	string_from_queue(queue, fs, result, 4096);
 	free_queue(queue);
 	return result;
@@ -522,7 +565,7 @@ fs_writef(file_system *fs, char *filename, char *text)
 	{
 		// Get free data block with smallest index
 		int free_block_num = find_free_block(fs);
-		if(free_block_num == -1) return -1;
+		if(free_block_num == -1) return -2;
 		data_block* new_block = data_block_at_num(fs, free_block_num);
 
 		// Mark data block as used in fs
