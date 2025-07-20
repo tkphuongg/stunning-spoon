@@ -106,6 +106,7 @@ char* get_name(const char* path, size_t size_of_path)
     strcpy(path_copy, path);
 
 	char* token = strtok(path_copy, "/");
+	if (token == NULL) return NULL;
     char* last = token;
 
 	while (token != NULL)
@@ -246,6 +247,7 @@ fs_cp(file_system *fs, char *src_path, char *dst_path_and_name)
 
 	// Get new name and check for dupe in new parent
 	char* new_name = get_name(dst_path_and_name, size_of_dst_path);
+	if (new_name == NULL) return -1;
 	// printf("dest: %s\n", new_name);
 	if(find_child_with_name(fs, dst_parent_inode, new_name) != -1)
 	{
